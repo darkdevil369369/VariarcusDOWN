@@ -49,11 +49,14 @@ Wants=network-online.target
 Type=simple
 User=$RUN_USER
 WorkingDirectory=$APP_DIR
+EnvironmentFile=-/home/ubuntu/.mirofish.env
 EnvironmentFile=$ENV_FILE
 ExecStart=$APP_DIR/.venv/bin/python -u run.py --no-browser
 Restart=always
 RestartSec=5
-MemoryMax=400M
+Environment=MALLOC_ARENA_MAX=2
+MemoryHigh=300M
+MemoryMax=450M
 
 [Install]
 WantedBy=multi-user.target
@@ -74,5 +77,6 @@ echo "  ideally only for your own IP.)"
 echo " No port open? Use a tunnel from your laptop instead:"
 echo "   ssh -L $PORT:localhost:$PORT $RUN_USER@$IP"
 echo "   then open http://localhost:$PORT/?token=$TOKEN"
-echo " Logs:  journalctl -u variarcus -f"
+echo " Logs:  journalctl -u variarcus -f
+ Pause: touch ~/.variarcus_STOP    Resume: rm ~/.variarcus_STOP"
 echo "=================================================================="

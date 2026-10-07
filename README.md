@@ -39,7 +39,9 @@ prints the dashboard link `http://SERVER_IP:8787/?token=...`. Then, in AWS → E
 Group, allow inbound TCP 8787, ideally only for your own IP. If you don't want to open the
 port, use the SSH tunnel command the script prints. The dashboard won't start on a public
 address without a token. Run the same script again to update. Logs:
-`journalctl -u variarcus -f`.
+`journalctl -u variarcus -f`. Telegram alerts reuse `SHADOW_TG_TOKEN` / `MIROFISH_TG_CHAT`
+from `/home/ubuntu/.mirofish.env` (tag `[VARIARCUS-DRY]`). `touch ~/.variarcus_STOP` pauses
+the bot.
 
 To change settings, copy `config.yaml` to `config.local.yaml` and edit that copy. It overrides
 the defaults and is ignored by git.

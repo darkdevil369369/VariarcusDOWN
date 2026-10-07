@@ -21,6 +21,7 @@ from bot.feeds.sim import SimFeed
 from bot.feeds.venues import LEADER_FEEDS, ArcusFeed
 from bot.leadlag import LeadLag
 from bot.market import Market
+from bot.notify import Notifier
 from bot.strategy import Strategy
 
 TICK_S = 0.01   # strategy loop: 100 Hz
@@ -81,11 +82,17 @@ async def main() -> None:
     if cfg.dashboard.open_browser and not args.no_browser:
         webbrowser.open(url)
 
+    notifier = Notifier(app, cfg)
+    notify_task = asyncio.create_task(notifier.run(stop))
     tasks = [asyncio.create_task(f.run(stop)) for f in app.feeds]
     tasks += [asyncio.create_task(app.loop(stop)), asyncio.create_task(dash.broadcast(stop))]
     try:
         await stop.wait()
     finally:
+        try:
+            await asyncio.wait_for(notify_task, 8)    # lets the "stopped" alert go out
+        except (asyncio.TimeoutError, Exception):
+            pass
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

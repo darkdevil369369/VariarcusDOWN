@@ -57,6 +57,11 @@ leadlag:
   qualify_min_follow_pct: 60
   qualify_margin_ms: 150
 
+telegram:                     # uses SHADOW_TG_TOKEN / MIROFISH_TG_CHAT (env or /home/ubuntu/.mirofish.env)
+  enabled: true
+  per_trade: true             # one message per closed paper trade
+  summary_every_min: 60
+
 dashboard:
   host: 127.0.0.1             # 0.0.0.0 on a server (then a token is mandatory)
   token: ""                   # or env VARIARCUS_TOKEN; open with http://IP:8787/?token=...
