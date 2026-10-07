@@ -26,6 +26,21 @@ Manual: `pip install -r requirements.txt` then `python run.py`.
 python tools/ping_arcus.py      # prints p50; put it into config.local.yaml -> paper.rtt_ms
 ```
 
+### On your AWS / Ubuntu server (runs 24/7)
+
+```bash
+git clone https://github.com/darkdevil369369/VariarcusDOWN ~/VariarcusDOWN
+bash ~/VariarcusDOWN/deploy/install_server.sh
+```
+
+The script installs everything, measures RTT to Arcus and writes it into the config, then
+creates a `variarcus` systemd service (auto-restarts and survives reboots). At the end it
+prints the dashboard link `http://SERVER_IP:8787/?token=...`. Then, in AWS → EC2 → Security
+Group, allow inbound TCP 8787, ideally only for your own IP. If you don't want to open the
+port, use the SSH tunnel command the script prints. The dashboard won't start on a public
+address without a token. Run the same script again to update. Logs:
+`journalctl -u variarcus -f`.
+
 To change settings, copy `config.yaml` to `config.local.yaml` and edit that copy. It overrides
 the defaults and is ignored by git.
 
@@ -88,7 +103,8 @@ legs.
 | `bot/leadlag.py` | live lead-lag analyzer and leader qualification |
 | `bot/strategy.py` | entry/exit logic, risk, paper executor |
 | `bot/dashboard.py`, `bot/static/` | web UI (Chart.js bundled locally) |
-| `tools/ping_arcus.py` | RTT measurement |
+| `tools/ping_arcus.py` | RTT measurement (`--write` saves it to config.local.yaml) |
+| `deploy/install_server.sh` | one-command server install as a systemd service |
 | `data/trades.csv` | every paper trade |
 
 Tests: `python -m pytest -q`. They include a synthetic market where the bot must make money

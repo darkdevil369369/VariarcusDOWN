@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
+import os
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -21,6 +23,20 @@ class Dashboard:
         self.cfg = cfg
         self.clients: set[web.WebSocketResponse] = set()
         self.runner: web.AppRunner | None = None
+        # Required when the dashboard is reachable from the internet (host 0.0.0.0).
+        self.token = os.environ.get("VARIARCUS_TOKEN") or cfg.dashboard.get("token") or ""
+
+    @web.middleware
+    async def auth(self, request, handler):
+        if not self.token:
+            return await handler(request)
+        given = request.query.get("token") or request.cookies.get("vtok") or ""
+        if not hmac.compare_digest(given, self.token):
+            return web.Response(status=401, text="401: open the dashboard with ?token=YOUR_TOKEN\n")
+        resp = await handler(request)
+        if request.query.get("token") and isinstance(resp, web.StreamResponse) and not resp.prepared:
+            resp.set_cookie("vtok", self.token, httponly=True, samesite="Strict", max_age=30 * 86400)
+        return resp
 
     def snapshot(self) -> dict:
         st = self.s.strategy
@@ -146,7 +162,10 @@ class Dashboard:
                     self.clients.discard(ws)
 
     async def start(self) -> str:
-        app = web.Application()
+        d = self.cfg.dashboard
+        if d.host not in ("127.0.0.1", "localhost", "::1") and not self.token:
+            raise SystemExit("Dashboard host is public but no token is set. Set VARIARCUS_TOKEN or dashboard.token.")
+        app = web.Application(middlewares=[self.auth])
         app.router.add_get("/", self.index)
         app.router.add_get("/api/state", self.state)
         app.router.add_get("/api/trades.csv", self.trades_csv)
@@ -155,7 +174,6 @@ class Dashboard:
         app.router.add_static("/static", STATIC)
         self.runner = web.AppRunner(app, access_log=None)
         await self.runner.setup()
-        d = self.cfg.dashboard
         await web.TCPSite(self.runner, d.host, d.port).start()
         url = f"http://{d.host}:{d.port}/"
         log.info("dashboard on %s", url)

@@ -3,9 +3,14 @@
 
 import asyncio
 import statistics
+import sys
 import time
+from pathlib import Path
 
 import aiohttp
+import yaml
+
+LOCAL = Path(__file__).resolve().parent.parent / "config.local.yaml"
 
 URL = "https://api.arcus.xyz/v1/time"
 
@@ -25,7 +30,14 @@ async def main(n: int = 30) -> None:
     p50 = statistics.median(samples)
     p95 = samples[int(len(samples) * 0.95) - 1]
     print(f"Arcus RTT over {n} requests: p50 {p50:.0f} ms, p95 {p95:.0f} ms, min {samples[0]:.0f} ms")
-    print(f"-> set  paper.rtt_ms: {round(p50)}  in config.local.yaml")
+    if "--write" in sys.argv:
+        data = yaml.safe_load(LOCAL.read_text()) if LOCAL.exists() else {}
+        data = data or {}
+        data.setdefault("paper", {})["rtt_ms"] = round(p50)
+        LOCAL.write_text(yaml.safe_dump(data, sort_keys=False))
+        print(f"-> wrote paper.rtt_ms: {round(p50)} to {LOCAL.name}")
+    else:
+        print(f"-> set  paper.rtt_ms: {round(p50)}  in config.local.yaml  (or rerun with --write)")
 
 
 if __name__ == "__main__":

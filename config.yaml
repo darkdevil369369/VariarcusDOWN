@@ -58,6 +58,7 @@ leadlag:
   qualify_margin_ms: 150
 
 dashboard:
-  host: 127.0.0.1
+  host: 127.0.0.1             # 0.0.0.0 on a server (then a token is mandatory)
+  token: ""                   # or env VARIARCUS_TOKEN; open with http://IP:8787/?token=...
   port: 8787
   open_browser: true
