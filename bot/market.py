@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections import deque
 from dataclasses import dataclass, field
 
 
@@ -165,3 +166,10 @@ class Market:
         self.symbol = symbol
         self.arcus = ArcusBook()
         self.leaders: dict[str, Quote] = {name: Quote() for name in leader_names}
+        # Arcus public prints: (id, local_ts, price, size, taker_side "BUY"/"SELL"/None)
+        self.trades: deque[tuple[int, float, float, float, str | None]] = deque(maxlen=5000)
+        self.trade_id = 0
+
+    def add_trade(self, price: float, size: float, side: str | None, ts: float | None = None) -> None:
+        self.trade_id += 1
+        self.trades.append((self.trade_id, now() if ts is None else ts, price, size, side))

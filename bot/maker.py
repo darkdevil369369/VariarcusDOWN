@@ -5,10 +5,13 @@ Flat:     bid at fair x (1 - entry_bps), ask at fair x (1 + entry_bps); never cr
 In a position: one exit order at fair x (1 +/- exit_bps), never worse than entry +/- min_profit_bps
 Stop loss / max hold: cancel quotes, exit with a taker IOC (pays the taker fee).
 
-Paper fill model (conservative): a resting bid fills only once Arcus's best bid has
-dropped BELOW it (the whole level, us included, was taken); a resting ask fills once
-the best ask is ABOVE it. New/moved quotes go live rtt/2 after the decision (ALO skips
-the speed bump); until then the previous price stays on the book.
+Paper fill model (queue-aware, from Arcus public prints):
+  * a quote goes live rtt/2 after the decision (ALO skips the speed bump) at the BACK
+    of its price level: queue ahead = displayed size there at that moment;
+  * prints at our price by the other side (taker SELL for our bid, BUY for our ask,
+    or unknown side) eat that queue; when they reach us we are filled;
+  * a print through our price, or the book moving through it, fills us outright;
+  * the queue ahead shrinks with the displayed level (cancels ahead of us).
 """
 
 from __future__ import annotations
@@ -38,7 +41,8 @@ class MakerStrategy(Strategy):
         q = self.quotes[sym].get(key)
         live_after = t + self.cfg.paper.rtt_ms / 2000
         if q is None:
-            self.quotes[sym][key] = {"px": None, "live_t": live_after, "next_px": px}
+            self.quotes[sym][key] = {"px": None, "live_t": live_after, "next_px": px, "queue": 0.0,
+                                     "seen": self.markets[sym].trade_id}
             return
         target = q["next_px"] if q["next_px"] is not None else q["px"]
         if target and abs(px / target - 1) * 1e4 < self.mm.requote_bps:
@@ -51,15 +55,58 @@ class MakerStrategy(Strategy):
             return None
         if q["next_px"] is not None and t >= q["live_t"]:
             q["px"], q["next_px"] = q["next_px"], None
+            side = self._side(sym, key)
+            book = self.markets[sym].arcus
+            levels = book.bids if side == "buy" else book.asks
+            q["queue"] = levels.get(q["px"], 0.0)          # join the back of the level
+            q["seen"] = self.markets[sym].trade_id
         return q["px"]
+
+    def _side(self, sym: str, key: str) -> str:
+        if key == "bid":
+            return "buy"
+        if key == "ask":
+            return "sell"
+        pos = self.positions.get(sym)
+        return "sell" if pos is not None and pos.side > 0 else "buy"
+
+    def _check_fill(self, sym: str, key: str, t: float) -> float | None:
+        """Price we got filled at, or None."""
+        px = self._active_px(sym, key, t)
+        if px is None:
+            return None
+        q = self.quotes[sym][key]
+        side = self._side(sym, key)
+        market = self.markets[sym]
+        book = market.arcus
+        if (side == "buy" and book.best_bid < px) or (side == "sell" and book.best_ask > px):
+            return px                                       # book moved through us
+        level = (book.bids if side == "buy" else book.asks).get(px, 0.0)
+        q["queue"] = min(q["queue"], level)                 # cancels ahead of us
+        hit_side = "SELL" if side == "buy" else "BUY"
+        if market.trade_id <= q["seen"]:
+            return None
+        new = []
+        for tr in reversed(market.trades):                  # only prints we have not seen yet
+            if tr[0] <= q["seen"]:
+                break
+            new.append(tr)
+        q["seen"] = market.trade_id
+        for tid, _ts, tpx, tsz, tside in reversed(new):
+            if tside not in (None, hit_side):
+                continue
+            through = tpx < px if side == "buy" else tpx > px
+            if through:
+                return px
+            if abs(tpx - px) <= px * 1e-9:
+                q["queue"] -= tsz
+                if q["queue"] < 0:
+                    return px
+        return None
 
     def _cancel(self, sym: str, *keys: str) -> None:
         for k in keys or list(self.quotes[sym]):
             self.quotes[sym].pop(k, None)
-
-    @staticmethod
-    def _filled(side: str, px: float, book) -> bool:
-        return book.best_bid < px if side == "buy" else book.best_ask > px
 
     # ------------------------------------------------------------------ main tick
     def tick(self, t: float | None = None) -> None:
@@ -96,8 +143,8 @@ class MakerStrategy(Strategy):
         self._set_quote(sym, "bid", bid, t)
         self._set_quote(sym, "ask", ask, t)
         for key, side in (("bid", "buy"), ("ask", "sell")):
-            px = self._active_px(sym, key, t)
-            if px and self._filled(side, px, book):
+            px = self._check_fill(sym, key, t)
+            if px:
                 self._open(t, sym, side, px, notional, fair)
                 return
 
@@ -136,14 +183,18 @@ class MakerStrategy(Strategy):
         if side == "buy" and px >= book.best_ask:
             px = book.best_bid
         self._set_quote(sym, "exit", px, t)
-        active = self._active_px(sym, "exit", t)
-        if active and self._filled(side, active, book):
+        active = self._check_fill(sym, "exit", t)
+        if active:
             self._cancel(sym)
             self._close(t, pos, pos.qty, active, "maker_exit", self.cfg.paper.maker_fee_bps / 1e4)
 
     def quotes_view(self, sym: str) -> dict:
         t = now()
-        return {k: self._active_px(sym, k, t) for k in self.quotes.get(sym, {})}
+        out = {}
+        for k, q in self.quotes.get(sym, {}).items():
+            px = self._active_px(sym, k, t)
+            out[k] = None if px is None else {"px": px, "queue": round(q["queue"], 5)}
+        return out
 
     def flatten(self) -> None:
         for sym in self.quotes:

@@ -187,3 +187,23 @@ def test_maker_mm_quote_placement():
     assert q["bid"]["next_px"] == pytest.approx(100000.05 * (1 - 1.2e-4))
     assert st._active_px("BTC", "bid", 0.0) is None                          # not live before rtt/2
     assert st._active_px("BTC", "bid", 1.0) == q["bid"]["px"]
+
+
+def test_arcus_trades_feed_and_queue_fill():
+    from bot.config import load_config
+    c = load_config()
+    m = mk()
+    f = ArcusFeed(m, "BTC")
+    f.on_message({"type": "subscribed", "channel": "l2OrderbookUpdates", "id": "BTC-USD",
+                  "contents": {"bids": [["100000", "0.5"]], "asks": [["100000.1", "0.4"]], "lastSequenceId": 1}})
+    st = MakerStrategy(m, c)
+    st._set_quote("BTC", "ask", 100000.1, 0.0)
+    assert st._check_fill("BTC", "ask", 1.0) is None          # live, 0.4 BTC queued ahead of us
+    assert st.quotes["BTC"]["ask"]["queue"] == pytest.approx(0.4)
+    f.on_message({"type": "channel_data", "channel": "trades", "id": "BTC-USD",
+                  "contents": [{"price": "100000.1", "size": "0.3", "side": "BUY", "timestamp": 1, "sequenceNumber": 1}]})
+    assert st._check_fill("BTC", "ask", 1.1) is None          # 0.1 still ahead
+    f.on_message({"type": "channel_data", "channel": "trades", "id": "BTC-USD",
+                  "contents": [{"price": "100000.1", "size": "0.2", "side": "SELL", "timestamp": 2, "sequenceNumber": 2},
+                               {"price": "100000.1", "size": "0.2", "side": "BUY", "timestamp": 3, "sequenceNumber": 3}]})
+    assert st._check_fill("BTC", "ask", 1.2) == pytest.approx(100000.1)   # SELL print ignored, BUY print reaches us

@@ -41,8 +41,18 @@ class ArcusFeed(Feed):
     async def on_open(self, ws) -> None:
         self.ws = ws
         await ws.send(self._sub("subscribe"))
+        await ws.send(json.dumps({"type": "subscribe", "channel": "trades", "id": self.market_id}))
 
     def on_message(self, msg) -> None:
+        if msg.get("channel") == "trades":
+            ident = msg.get("id") or msg.get("marketDisplayName")
+            if msg.get("type") == "channel_data" and (ident is None or str(ident).upper() == self.market_id):
+                market = self.markets[self.symbol]
+                for item in msg.get("contents") or []:
+                    side = item.get("side") or item.get("aggressorSide")
+                    market.add_trade(float(item["price"]), float(item["size"]),
+                                     str(side).upper() if side else None)
+            return
         if msg.get("channel") != "l2OrderbookUpdates":
             if msg.get("type") == "error":
                 self.last_error = str(msg)[:200]
