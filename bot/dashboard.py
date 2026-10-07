@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import hmac
 import json
 import logging
@@ -25,17 +27,30 @@ class Dashboard:
         self.runner: web.AppRunner | None = None
         # Required when the dashboard is reachable from the internet (host 0.0.0.0).
         self.token = os.environ.get("VARIARCUS_TOKEN") or cfg.dashboard.get("token") or ""
+        # Basic auth "user:pass", same login as the other dashboards on the server
+        # (CROSSEDGE_DASH_AUTH in ~/.crossedge_dash.env).
+        self.basic = os.environ.get("CROSSEDGE_DASH_AUTH") or _read_env_key(
+            Path.home() / ".crossedge_dash.env", "CROSSEDGE_DASH_AUTH")
+        self.basic_header = "Basic " + base64.b64encode(self.basic.encode()).decode() if self.basic else ""
+        self.session = hashlib.sha256(f"variarcus:{self.basic}:{self.token}".encode()).hexdigest()
 
     @web.middleware
     async def auth(self, request, handler):
-        if not self.token:
+        if not self.token and not self.basic:
             return await handler(request)
-        given = request.query.get("token") or request.cookies.get("vtok") or ""
-        if not hmac.compare_digest(given, self.token):
-            return web.Response(status=401, text="401: open the dashboard with ?token=YOUR_TOKEN\n")
+        if hmac.compare_digest(request.cookies.get("vsess", ""), self.session):
+            return await handler(request)
+        ok = False
+        if self.basic and hmac.compare_digest(request.headers.get("Authorization", ""), self.basic_header):
+            ok = True
+        if self.token and hmac.compare_digest(request.query.get("token", ""), self.token):
+            ok = True
+        if not ok:
+            headers = {"WWW-Authenticate": 'Basic realm="variarcus"'} if self.basic else {}
+            return web.Response(status=401, text="401 unauthorized\n", headers=headers)
         resp = await handler(request)
-        if request.query.get("token") and isinstance(resp, web.StreamResponse) and not resp.prepared:
-            resp.set_cookie("vtok", self.token, httponly=True, samesite="Strict", max_age=30 * 86400)
+        if isinstance(resp, web.StreamResponse) and not resp.prepared:
+            resp.set_cookie("vsess", self.session, httponly=True, samesite="Strict", max_age=30 * 86400)
         return resp
 
     def snapshot(self) -> dict:
@@ -163,8 +178,8 @@ class Dashboard:
 
     async def start(self) -> str:
         d = self.cfg.dashboard
-        if d.host not in ("127.0.0.1", "localhost", "::1") and not self.token:
-            raise SystemExit("Dashboard host is public but no token is set. Set VARIARCUS_TOKEN or dashboard.token.")
+        if d.host not in ("127.0.0.1", "localhost", "::1") and not (self.token or self.basic):
+            raise SystemExit("Dashboard host is public but no auth is set. Set VARIARCUS_TOKEN or CROSSEDGE_DASH_AUTH.")
         app = web.Application(middlewares=[self.auth])
         app.router.add_get("/", self.index)
         app.router.add_get("/api/state", self.state)
@@ -184,6 +199,16 @@ class Dashboard:
             await ws.close()
         if self.runner:
             await self.runner.cleanup()
+
+
+def _read_env_key(path: Path, key: str) -> str:
+    try:
+        for line in path.read_text().splitlines():
+            if line.startswith(key + "="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return ""
 
 
 def _clean(v: dict) -> dict:

@@ -26,22 +26,21 @@ Manual: `pip install -r requirements.txt` then `python run.py`.
 python tools/ping_arcus.py      # prints p50; put it into config.local.yaml -> paper.rtt_ms
 ```
 
-### On your AWS / Ubuntu server (runs 24/7)
+### On the bots server (same setup as polypf15min)
 
 ```bash
-git clone https://github.com/darkdevil369369/VariarcusDOWN ~/VariarcusDOWN
+URL=$(git -C ~/mirofish-bots remote get-url origin | sed 's/mirofish-bots/VariarcusDOWN/')
+git clone "$URL" ~/VariarcusDOWN
 bash ~/VariarcusDOWN/deploy/install_server.sh
 ```
 
-The script installs everything, measures RTT to Arcus and writes it into the config, then
-creates a `variarcus` systemd service (auto-restarts and survives reboots). At the end it
-prints the dashboard link `http://SERVER_IP:8787/?token=...`. Then, in AWS → EC2 → Security
-Group, allow inbound TCP 8787, ideally only for your own IP. If you don't want to open the
-port, use the SSH tunnel command the script prints. The dashboard won't start on a public
-address without a token. Run the same script again to update. Logs:
-`journalctl -u variarcus -f`. Telegram alerts reuse `SHADOW_TG_TOKEN` / `MIROFISH_TG_CHAT`
-from `/home/ubuntu/.mirofish.env` (tag `[VARIARCUS-DRY]`). `touch ~/.variarcus_STOP` pauses
-the bot.
+The script installs the `variarcus` systemd service and serves the dashboard on
+127.0.0.1:8798. It publishes the dashboard at **https://variarcus.tryrealo.com** through the
+existing cloudflared tunnel, so no AWS port needs to be opened. Login is the same as
+edge.tryrealo.com (`CROSSEDGE_DASH_AUTH`). Telegram alerts use `~/.mirofish.env`. It also
+measures RTT to Arcus and writes it into the config. Note: Arcus's servers are in Tokyo, so
+from Ireland the RTT is about 320 ms. Run the script again to update. Logs:
+`journalctl -u variarcus -f`. Pause with `touch ~/.variarcus_STOP`.
 
 To change settings, copy `config.yaml` to `config.local.yaml` and edit that copy. It overrides
 the defaults and is ignored by git.
