@@ -30,6 +30,7 @@ class ArcusFeed(Feed):
         self.market_id = f"{symbol}-USD"
         self.name = f"arcus:{symbol}"
         self.ws = None
+        self.resync_at: float | None = None   # set while waiting for a fresh snapshot
 
     def _sub(self, kind: str) -> str:
         msg = {"type": kind, "channel": "l2OrderbookUpdates", "id": self.market_id}
@@ -54,10 +55,14 @@ class ArcusFeed(Feed):
         t = now()
         if msg.get("type") == "subscribed":
             book.snapshot(c["bids"], c["asks"], int(c["lastSequenceId"]), t)
+            self.resync_at = None
         elif msg.get("type") == "channel_data":
             if not book.update(c["bids"], c["asks"], int(c["lastSequenceId"]), t) and book.health == "RESYNC":
-                log.warning("[%s] sequence gap -> resync", self.name)
-                self._resync()
+                # one resubscribe per gap; retry only if no snapshot arrives within 5 s
+                if self.resync_at is None or t - self.resync_at > 5:
+                    self.resync_at = t
+                    log.warning("[%s] sequence gap -> resync", self.name)
+                    self._resync()
 
     def _resync(self) -> None:
         import asyncio
@@ -74,6 +79,7 @@ class ArcusFeed(Feed):
 
     def on_disconnect(self) -> None:
         self.ws = None
+        self.resync_at = None
         self.markets[self.symbol].arcus.mark_stale()
 
 

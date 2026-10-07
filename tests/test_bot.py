@@ -119,3 +119,19 @@ def test_daily_loss_limit_blocks_entries(cfg, tmp_path):
     strat.stats.day_pnl = -1000
     assert strat._risk_block(0) == "daily loss limit"
     assert math.isfinite(strat.stats.equity)
+
+
+def test_arcus_resync_sent_once_per_gap(monkeypatch):
+    m = mk()
+    f = ArcusFeed(m, "BTC")
+    calls = []
+    monkeypatch.setattr(f, "_resync", lambda: calls.append(1))
+    snap = {"type": "subscribed", "channel": "l2OrderbookUpdates", "id": "BTC-USD",
+            "contents": {"bids": [["100", "1"]], "asks": [["101", "1"]], "lastSequenceId": 1}}
+    f.on_message(snap)
+    for seq in (5, 6, 7, 8):     # gap, then more deltas before the snapshot
+        f.on_message({"type": "channel_data", "channel": "l2OrderbookUpdates", "id": "BTC-USD",
+                      "contents": {"bids": [], "asks": [], "lastSequenceId": seq, "globalSequenceId": seq}})
+    assert len(calls) == 1
+    f.on_message(snap)
+    assert f.resync_at is None and m["BTC"].arcus.health == "OK"
