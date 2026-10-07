@@ -79,6 +79,7 @@ class Dashboard:
                 "fair": fair,
                 "gap_bps": round((fair / book.mid - 1) * 1e4, 2) if fair and book.valid else None,
                 "best_gap": st.diag.get(sym),
+                "quotes": st.quotes_view(sym) if hasattr(st, "quotes_view") else None,
                 "cooldown_s": max(0.0, round(st.cooldown_until[sym] - time.monotonic(), 1)),
                 "position": None if pos is None else {
                     "side": "LONG" if pos.side > 0 else "SHORT", "qty": pos.qty,
@@ -124,6 +125,8 @@ class Dashboard:
                 "exit_mode": self.cfg.paper.exit_mode,
                 "maker_buffer": self.cfg.strategy.maker_exit_buffer_bps,
                 "direction": self.cfg.strategy.direction,
+                "mode": self.cfg.strategy.get("mode", "taker"),
+                "mm_entry": self.cfg.maker_mm.entry_bps,
                 "tp": self.cfg.strategy.take_profit_bps,
                 "sl": self.cfg.strategy.stop_loss_bps,
                 "max_hold_ms": self.cfg.strategy.max_hold_ms,

@@ -6,6 +6,7 @@ from bot.config import load_config
 from bot.feeds.sim import SimFeed
 from bot.feeds.venues import ArcusFeed, BinanceFeed, BybitFeed, OkxFeed, VariationalFeed
 from bot.leadlag import LeadLag
+from bot.maker import MakerStrategy
 from bot.market import ArcusBook, Market
 from bot.strategy import Strategy
 
@@ -73,11 +74,11 @@ def test_leader_feeds_parse():
 
 
 # ---------------------------------------------------------------- strategy (deterministic clock)
-def _run_sim(cfg, seconds, lag_ms, seed=7, tmp_path=None):
+def _run_sim(cfg, seconds, lag_ms, seed=7, tmp_path=None, cls=Strategy):
     markets = mk()
     sim = SimFeed(markets, arcus_lag_ms=lag_ms, seed=seed)
     ll = LeadLag(markets, cfg)
-    strat = Strategy(markets, cfg, data_dir=tmp_path, leadlag=ll)
+    strat = cls(markets, cfg, data_dir=tmp_path, leadlag=ll)
     t = 1000.0
     for _ in range(int(seconds / 0.05)):
         sim.step(t)
@@ -160,3 +161,29 @@ def test_taker_mode_still_works(cfg, tmp_path):
     cfg["paper"]["exit_mode"] = "taker"
     strat, _ = _run_sim(cfg, 120, lag_ms=1200, tmp_path=tmp_path)
     assert strat.trades and all(t.exit_reason != "maker_tp" for t in strat.trades)
+
+
+def test_maker_mm_quotes_fill_without_fees_and_never_cross(cfg, tmp_path):
+    assert cfg.strategy.mode == "maker_mm"
+    strat, _ = _run_sim(cfg, 600, lag_ms=1200, tmp_path=tmp_path, cls=MakerStrategy)
+    assert strat.trades
+    for t in strat.trades:
+        if t.exit_reason == "maker_exit":
+            assert t.fees_usd == 0
+        else:   # stop / max hold exits pay one taker fee
+            assert t.fees_usd == pytest.approx(t.notional * cfg.paper.taker_fee_bps / 1e4, rel=0.05)
+    assert strat.open_notional() <= cfg.paper.max_notional_usd + 1e-6
+
+
+def test_maker_mm_quote_placement():
+    from bot.config import load_config
+    c = load_config()
+    m = mk()
+    m["BTC"].arcus.snapshot([["100000", "5"]], [["100000.1", "5"]], seq=1, ts=0)
+    st = MakerStrategy(m, c)
+    st._quote_flat(0.0, "BTC", 100000.05, m["BTC"].arcus)
+    q = st.quotes["BTC"]
+    assert q["bid"]["next_px"] <= 100000 and q["ask"]["next_px"] >= 100000.1   # never crossing
+    assert q["bid"]["next_px"] == pytest.approx(100000.05 * (1 - 1.2e-4))
+    assert st._active_px("BTC", "bid", 0.0) is None                          # not live before rtt/2
+    assert st._active_px("BTC", "bid", 1.0) == q["bid"]["px"]

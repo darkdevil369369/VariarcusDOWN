@@ -20,6 +20,7 @@ from bot.dashboard import Dashboard
 from bot.feeds.sim import SimFeed
 from bot.feeds.venues import LEADER_FEEDS, ArcusFeed
 from bot.leadlag import LeadLag
+from bot.maker import MakerStrategy
 from bot.market import Market
 from bot.notify import Notifier
 from bot.strategy import Strategy
@@ -35,7 +36,8 @@ class App:
         leaders = [n for n, c in cfg.leaders.items() if c.get("enabled", True)]
         self.markets = {s: Market(s, leaders) for s in cfg.symbols}
         self.leadlag = LeadLag(self.markets, cfg)
-        self.strategy = Strategy(self.markets, cfg, leadlag=self.leadlag)
+        cls = MakerStrategy if cfg.strategy.get("mode") == "maker_mm" else Strategy
+        self.strategy = cls(self.markets, cfg, leadlag=self.leadlag)
         if sim:
             self.feeds = [SimFeed(self.markets)]
         else:

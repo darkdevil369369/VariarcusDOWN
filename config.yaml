@@ -26,6 +26,8 @@ leaders:
   okx:         {enabled: true, max_age_ms: 1500, trigger_age_ms: 500}   # swap bbo-tbt
 
 strategy:
+  mode: maker_mm              # maker_mm = maker in + maker out (0 fee both legs, see maker_mm below)
+                              # taker    = taker in on a leader jump, exit per paper.exit_mode
   direction: both             # both | long | short   (short = only trade drops)
   basis_tau_s: 90             # EMA horizon for Arcus-vs-leader basis
   basis_warmup_s: 20          # no trading until basis has this much data
@@ -42,6 +44,15 @@ strategy:
   stop_loss_bps: 10
   max_hold_ms: 8000
   cooldown_ms: 2500           # per symbol, after an exit
+
+maker_mm:                     # used when strategy.mode: maker_mm
+  ref_leaders: [variational]  # fair = these leaders' mid x learned basis (empty = all fresh leaders)
+  entry_bps: 1.2              # rest a bid this far below fair and an ask this far above (BTC ~$10)
+  exit_bps: 0.0               # exit order at fair (the middle of the normal gap) ...
+  min_profit_bps: 0.3         # ... but never closer than this to the entry price
+  requote_bps: 0.3            # move a resting order only when its price is off by more than this
+  stop_loss_bps: 6            # taker exit (pays taker fee) beyond this adverse move
+  max_hold_ms: 180000         # taker exit after this long
 
 risk:
   daily_loss_limit_usd: 25    # stop opening new trades for the UTC day
