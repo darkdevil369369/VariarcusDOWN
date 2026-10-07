@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VariarcusDOWN</title>
+<link rel="icon" href="data:,">
+<script src="/static/chart.umd.js"></script>
+<style>
+:root{--bg:#0b0e14;--panel:#121722;--panel2:#171d2b;--line:#232b3d;--text:#dfe5f0;--mute:#8590a6;
+--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--blue:#60a5fa;--violet:#a78bfa;--cyan:#22d3ee}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+h1{font-size:16px;margin:0;letter-spacing:.5px}
+h1 b{color:var(--red)}
+.badge{padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid var(--line);color:var(--mute)}
+.badge.on{color:var(--green);border-color:#14532d}.badge.off{color:var(--red);border-color:#7f1d1d}
+.badge.warn{color:var(--amber);border-color:#78350f}
+.spacer{flex:1}
+button,.btn{background:var(--panel2);color:var(--text);border:1px solid var(--line);padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit;text-decoration:none}
+button:hover,.btn:hover{border-color:var(--blue)}
+button.danger{border-color:#7f1d1d;color:#fca5a5}
+main{padding:14px 16px;display:grid;gap:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.kpi .l{color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+.kpi .v{font-size:19px;margin-top:2px}
+.pos{color:var(--green)}.neg{color:var(--red)}.mute{color:var(--mute)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,560px),1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
+.card h2{font-size:13px;margin:0 0 10px;display:flex;gap:8px;align-items:center;text-transform:uppercase;letter-spacing:.8px;color:var(--mute)}
+.card h2 .sym{color:var(--text);font-size:15px;letter-spacing:.5px}
+.row{display:flex;flex-wrap:wrap;gap:16px;align-items:baseline}
+.big{font-size:22px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:4px 6px;text-align:right;white-space:nowrap}
+th{color:var(--mute);font-weight:500;font-size:11px;text-transform:uppercase;border-bottom:1px solid var(--line)}
+td:first-child,th:first-child{text-align:left}
+tbody tr:nth-child(odd){background:#0f1420}
+.scroll{overflow:auto;max-height:340px}
+.chartbox{position:relative;height:200px;margin-top:8px}
+.posbox{margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--panel2);border:1px solid var(--line)}
+.posbox.long{border-color:#14532d}.posbox.short{border-color:#7f1d1d}
+.book{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;font-size:12px}
+.book div{display:flex;justify-content:space-between;padding:1px 4px}
+.bid{background:linear-gradient(90deg,transparent,rgba(34,197,94,.12))}
+.ask{background:linear-gradient(90deg,rgba(239,68,68,.12),transparent)}
+.ev{font-size:12px;padding:3px 0;border-bottom:1px dashed var(--line)}
+.ev .ts{color:var(--mute);margin-right:6px}
+.note{color:var(--mute);font-size:12px}
+.gap{font-size:28px;font-weight:600}
+</style>
+</head>
+<body>
+<header>
+  <h1>VARIARCUS<b>DOWN</b></h1>
+  <span id="mode" class="badge">…</span>
+  <span id="conn" class="badge off">disconnected</span>
+  <span id="state" class="badge"></span>
+  <span id="feeds" class="row" style="gap:6px"></span>
+  <span class="spacer"></span>
+  <button onclick="ctl('pause')">Pause</button>
+  <button onclick="ctl('resume')">Resume</button>
+  <button class="danger" onclick="if(confirm('Close all paper positions and pause?'))ctl('flatten')">Flatten</button>
+  <a class="btn" href="/api/trades.csv">trades.csv</a>
+</header>
+<main>
+  <section class="kpis" id="kpis"></section>
+  <section class="grid2" id="markets"></section>
+  <section class="grid2">
+    <div class="card"><h2>Equity (paper)</h2><div class="chartbox"><canvas id="eq"></canvas></div></div>
+    <div class="card"><h2>Lead-lag measured live</h2>
+      <div class="scroll"><table class="mono"><thead><tr><th>Mkt</th><th>Leader</th><th>Events</th><th>Arcus followed</th><th>Median lag</th><th>P25 lag</th><th>XCorr lag</th><th>Corr</th><th>Can trigger?</th></tr></thead><tbody id="ll"></tbody></table></div>
+      <p class="note">Event = leader moved ≥ threshold in 1 s. "Followed" = Arcus covered half of it within 10 s. Lag is from the leader move to that point. Lag minus your RTT + 50 ms is the room you have. A leader can trigger trades only once it is qualified here.</p>
+    </div>
+  </section>
+  <section class="grid2">
+    <div class="card"><h2>Trades</h2><div class="scroll"><table class="mono"><thead><tr><th>Exit time (UTC)</th><th>Mkt</th><th>Side</th><th>Notional</th><th>Entry</th><th>Exit</th><th>Net $</th><th>bps</th><th>Hold</th><th>Edge</th><th>Why</th></tr></thead><tbody id="trades"></tbody></table></div></div>
+    <div class="card"><h2>Events</h2><div class="scroll mono" id="events"></div></div>
+  </section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const f=(x,d=2)=>x==null||isNaN(x)?'–':Number(x).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+const sgn=(x,d=2)=>x==null?'–':(x>0?'+':'')+f(x,d);
+const cls=x=>x==null?'':x>0?'pos':x<0?'neg':'';
+const COLORS={variational:'#a78bfa',binance:'#f59e0b',bybit:'#22d3ee',okx:'#60a5fa',composite:'#ffffff'};
+const hist={};const charts={};let eqChart=null;const HAS_CHART=typeof Chart!=='undefined';
+async function ctl(action){await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})})}
+
+function kpis(s){const a=s.account;const items=[
+ ['Equity','$'+f(a.equity),cls(a.equity-a.capital)],['Realized',sgn(a.realized,3),cls(a.realized)],
+ ['Unrealized',sgn(a.unrealized,3),cls(a.unrealized)],['Today',sgn(a.day_pnl,3),cls(a.day_pnl)],
+ ['Trades',a.trades,''],['Win rate',a.win_rate==null?'–':a.win_rate+'%',''],
+ ['Fees paid','$'+f(a.fees,3),'neg'],['Signals / missed',a.signals+' / '+a.missed,''],
+ ['Open / cap','$'+f(a.open_notional,0)+' / $'+f(a.cap,0),''],
+ ['RTT model',s.config.rtt_ms+'+50 ms',''],['Uptime',Math.floor(s.uptime_s/60)+'m',''],
+];$('kpis').innerHTML=items.map(([l,v,c])=>`<div class="kpi"><div class="l">${l}</div><div class="v mono ${c}">${v}</div></div>`).join('')}
+
+function ensureMarket(sym){if($('m-'+sym))return;
+ const el=document.createElement('div');el.className='card';el.id='m-'+sym;
+ el.innerHTML=`<h2><span class="sym">${sym}</span> Arcus vs leaders <span class="spacer"></span><span id="h-${sym}" class="badge"></span></h2>
+ <div class="row"><div><div class="note">Arcus bid / ask</div><div class="mono big" id="ba-${sym}"></div></div>
+ <div><div class="note">Spread</div><div class="mono big" id="sp-${sym}"></div></div>
+ <div><div class="note">Fair − Arcus mid</div><div class="mono gap" id="gap-${sym}"></div></div>
+ <div><div class="note">Cooldown</div><div class="mono big" id="cd-${sym}"></div></div></div>
+ <table class="mono" style="margin-top:8px"><thead><tr><th>Leader</th><th>Mid</th><th>Age ms</th><th>Basis bps</th><th>Move bps</th><th>Fair−Arcus bps</th><th></th></tr></thead><tbody id="ld-${sym}"></tbody></table>
+ <div id="pos-${sym}"></div>
+ <div class="chartbox"><canvas id="c-${sym}"></canvas></div>
+ <div class="book mono" id="bk-${sym}"></div>`;
+ $('markets').appendChild(el);hist[sym]={t:[],series:{}};
+ if(HAS_CHART){charts[sym]=new Chart($('c-'+sym),{type:'line',data:{labels:[],datasets:[]},options:{animation:false,responsive:true,maintainAspectRatio:false,
+  interaction:{mode:'nearest',intersect:false},plugins:{legend:{labels:{color:'#8590a6',boxWidth:10}},title:{display:true,text:'Leader fair − Arcus mid (bps). Above the band = buy edge, below = sell edge',color:'#8590a6',font:{size:11}}},
+  scales:{x:{ticks:{color:'#5b6478',maxTicksLimit:6},grid:{color:'#1a2030'}},y:{ticks:{color:'#5b6478'},grid:{color:'#1a2030'}}},elements:{point:{radius:0},line:{borderWidth:1.4}}}})}}
+
+function market(sym,m,cfg){ensureMarket(sym);const a=m.arcus;
+ $('h-'+sym).textContent=a.health+(a.age_ms!=null?' · '+a.age_ms+'ms':'');$('h-'+sym).className='badge '+(a.health==='OK'?'on':'off');
+ $('ba-'+sym).innerHTML=`<span class="pos">${f(a.bid)}</span> / <span class="neg">${f(a.ask)}</span>`;
+ $('sp-'+sym).textContent=a.spread_bps==null?'–':f(a.spread_bps,2)+' bps';
+ $('gap-'+sym).textContent=m.gap_bps==null?'–':sgn(m.gap_bps,2)+' bps';$('gap-'+sym).className='mono gap '+cls(m.gap_bps);
+ $('cd-'+sym).textContent=m.cooldown_s>0?m.cooldown_s+'s':'ready';
+ const rows=[];const mid=a.mid;
+ for(const [n,v] of Object.entries(m.leaders)){const g=v.fair&&mid?(v.fair/mid-1)*1e4:null;
+  rows.push(`<tr><td style="color:${COLORS[n]||'#ccc'}">${n}</td><td>${f(v.mid)}</td><td>${v.age_ms==null?'–':f(v.age_ms,0)}</td><td>${sgn(v.basis_bps,2)}</td><td class="${cls(v.momentum_bps)}">${sgn(v.momentum_bps,2)}</td><td class="${cls(g)}">${sgn(g,2)}</td><td>${v.fresh?'<span class="badge on">fresh</span>':'<span class="badge">stale</span>'}</td></tr>`);
+  const h=hist[sym];(h.series[n]=h.series[n]||[]);}
+ $('ld-'+sym).innerHTML=rows.join('');
+ const p=m.position;$('pos-'+sym).innerHTML=p?`<div class="posbox ${p.side.toLowerCase()} mono">${p.side} ${f(p.qty,5)} @ ${f(p.entry_px)} · $${f(p.notional,0)} · held ${f(p.held_ms/1000,1)}s · PnL <span class="${cls(p.pnl_bps)}">${sgn(p.pnl_bps,2)} bps</span>${p.exit_pending?' · exiting…':''}</div>`:'';
+ const bk=a.top||{bids:[],asks:[]};
+ $('bk-'+sym).innerHTML='<div style="display:block">'+bk.bids.map(([px,sz])=>`<div class="bid"><span>${f(sz,4)}</span><span class="pos">${f(px)}</span></div>`).join('')+'</div><div style="display:block">'+bk.asks.map(([px,sz])=>`<div class="ask"><span class="neg">${f(px)}</span><span>${f(sz,4)}</span></div>`).join('')+'</div>';
+ // chart history
+ const h=hist[sym];h.t.push(new Date().toLocaleTimeString());
+ const need=2*cfg.fee_bps+(a.spread_bps||0)/2+cfg.min_net_edge;
+ for(const [n,v] of Object.entries(m.leaders)){(h.series[n]=h.series[n]||[]);h.series[n].push(v.fresh&&v.fair&&mid?(v.fair/mid-1)*1e4:null)}
+ (h.series['+need']=h.series['+need']||[]).push(need);(h.series['-need']=h.series['-need']||[]).push(-need);
+ const MAX=720;if(h.t.length>MAX){h.t.shift();for(const k in h.series)h.series[k].shift()}
+ for(const k in h.series)while(h.series[k].length<h.t.length)h.series[k].unshift(null);
+ const c=charts[sym];if(c){c.data.labels=h.t;c.data.datasets=Object.entries(h.series).map(([k,d])=>({label:k,data:d,borderColor:k.includes('need')?'#3f475a':(COLORS[k]||'#ccc'),borderDash:k.includes('need')?[4,4]:[],spanGaps:true}));c.update('none')}}
+
+function render(s){$('mode').textContent=s.mode;$('mode').className='badge '+(s.mode.startsWith('SIM')?'warn':'on');
+ $('state').textContent=s.halted?'HALTED: '+s.halted:s.paused?'PAUSED':'RUNNING';$('state').className='badge '+(s.halted||s.paused?'off':'on');
+ $('feeds').innerHTML=Object.entries(s.feeds).map(([n,v])=>`<span class="badge ${v.connected?'on':'off'}" title="${v.last_error||''}">${n}${v.connected?'':' ✕'}</span>`).join('');
+ kpis(s);for(const [sym,m] of Object.entries(s.markets))market(sym,m,s.config);
+ $('ll').innerHTML=s.leadlag.map(r=>`<tr><td>${r.symbol}</td><td style="color:${COLORS[r.leader]||'#ccc'}">${r.leader}</td><td>${r.events}</td><td>${r.followed_pct==null?'–':r.followed_pct+'%'}</td><td>${r.median_lag_ms==null?'–':r.median_lag_ms+' ms'}</td><td>${r.p25_lag_ms==null?'–':r.p25_lag_ms+' ms'}</td><td>${r.xcorr_lag_ms==null?'–':r.xcorr_lag_ms+' ms'}</td><td>${f(r.xcorr,2)}</td><td title="${r.why}">${r.qualified?'<span class="badge on">yes</span>':'<span class="badge">no</span>'} <span class="mute">${r.why}</span></td></tr>`).join('')||'<tr><td colspan="9" class="mute">collecting… (needs a few minutes of data)</td></tr>';
+ $('trades').innerHTML=s.trades.map(t=>`<tr><td>${t.exit_time.slice(11)}</td><td>${t.symbol}</td><td class="${t.side==='LONG'?'pos':'neg'}">${t.side}</td><td>$${f(t.notional,0)}</td><td>${f(t.entry_px)}</td><td>${f(t.exit_px)}</td><td class="${cls(t.net_usd)}">${sgn(t.net_usd,3)}</td><td class="${cls(t.net_bps)}">${sgn(t.net_bps,1)}</td><td>${f(t.hold_ms/1000,1)}s</td><td>${f(t.entry_edge_bps,1)}</td><td>${t.exit_reason}</td></tr>`).join('')||'<tr><td colspan="11" class="mute">no trades yet</td></tr>';
+ $('events').innerHTML=s.events.map(e=>`<div class="ev"><span class="ts">${new Date(e.t*1000).toLocaleTimeString()}</span><b>${e.symbol}</b> ${e.text}</div>`).join('');
+ if(HAS_CHART){const pts=s.equity;if(!eqChart){eqChart=new Chart($('eq'),{type:'line',data:{labels:[],datasets:[{label:'equity $',data:[],borderColor:'#22c55e',fill:false}]},options:{animation:false,responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#5b6478',maxTicksLimit:6},grid:{color:'#1a2030'}},y:{ticks:{color:'#5b6478'},grid:{color:'#1a2030'}}},elements:{point:{radius:0},line:{borderWidth:1.5}}}})}
+  eqChart.data.labels=pts.map(p=>new Date(p[0]*1000).toLocaleTimeString());eqChart.data.datasets[0].data=pts.map(p=>p[1]);eqChart.update('none')}}
+
+function connect(){const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+ ws.onopen=()=>{$('conn').textContent='live';$('conn').className='badge on'};
+ ws.onclose=()=>{$('conn').textContent='disconnected';$('conn').className='badge off';setTimeout(connect,1500)};
+ ws.onmessage=e=>{try{render(JSON.parse(e.data))}catch(err){console.error(err)}}}
+connect();
+</script>
+</body>
+</html>

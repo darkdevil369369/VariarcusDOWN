@@ -1,0 +1,63 @@
+# VariarcusDOWN — lead-lag sniper: leaders (Variational + CEX) -> trade Arcus.
+# Copy to config.local.yaml to customise; run.py prefers config.local.yaml if present.
+
+symbols: [BTC, ETH]          # Arcus markets BTC-USD / ETH-USD
+
+mode: paper                   # paper only. Live execution is intentionally not wired.
+
+paper:
+  capital_usd: 500            # dry-run account size
+  max_notional_usd: 500       # hard cap on total open notional across all symbols
+  order_notional_usd: 250     # notional per entry
+  rtt_ms: 180                 # your round trip to api.arcus.xyz — measure it, it decides everything
+  taker_speed_bump_ms: 50     # Arcus holds taker orders 50 ms before matching
+  taker_fee_bps: 2.25         # Arcus base tier taker fee
+  entry_max_slippage_bps: 3   # IOC limit = touch +/- this at decision time
+  exit_max_slippage_bps: 15   # exits must get done
+
+leaders:
+  # max_age_ms:     quote older than this is ignored completely
+  # trigger_age_ms: a leader can only TRIGGER an entry if its last update is this recent
+  variational: {enabled: true, max_age_ms: 3000, trigger_age_ms: 1500}  # public WS ~1 tick/s (mark price)
+  binance:     {enabled: true, max_age_ms: 1500, trigger_age_ms: 500}   # USDT-M futures bookTicker
+  bybit:       {enabled: true, max_age_ms: 1500, trigger_age_ms: 500}   # linear orderbook.1
+  okx:         {enabled: true, max_age_ms: 1500, trigger_age_ms: 500}   # swap bbo-tbt
+
+strategy:
+  direction: both             # both | long | short   (short = only trade drops)
+  basis_tau_s: 90             # EMA horizon for Arcus-vs-leader basis
+  basis_warmup_s: 20          # no trading until basis has this much data
+  momentum_window_ms: 1500    # leader must have moved within this window ...
+  min_leader_move_bps: 4      # ... by at least this much, in the trade direction
+  min_net_edge_bps: 2.0       # edge left after fees + half spread
+  min_leaders_agree: 1        # leaders that must show the edge
+  veto_on_disagreement: true  # skip if any fresh leader signals the opposite side
+  max_spread_bps: 6           # skip when Arcus spread is wider
+  exit_edge_bps: 0.5          # exit when remaining edge to fair <= this (converged)
+  take_profit_bps: 15
+  stop_loss_bps: 10
+  max_hold_ms: 8000
+  cooldown_ms: 2500           # per symbol, after an exit
+
+risk:
+  daily_loss_limit_usd: 25    # stop opening new trades for the UTC day
+  max_trades_per_hour: 120
+  arcus_stale_ms: 10000       # no Arcus book update for this long -> book not trusted
+  max_consecutive_losses: 6   # pause 5 min after this many losers in a row
+
+leadlag:
+  sample_ms: 100              # analyzer grid
+  event_move_bps: 5           # leader move over 1 s that counts as an event
+  follow_fraction: 0.5        # Arcus must cover this fraction of the move to count as "followed"
+  # A leader may trigger trades only after the live data proves Arcus follows it
+  # later than we can act (event median lag >= rtt + speed bump + margin
+  # AND return cross-correlation peaks at a lag >= rtt + speed bump).
+  qualify: true
+  qualify_min_events: 10
+  qualify_min_follow_pct: 60
+  qualify_margin_ms: 150
+
+dashboard:
+  host: 127.0.0.1
+  port: 8787
+  open_browser: true

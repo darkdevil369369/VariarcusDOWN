@@ -1,0 +1,121 @@
+import math
+
+import pytest
+
+from bot.config import load_config
+from bot.feeds.sim import SimFeed
+from bot.feeds.venues import ArcusFeed, BinanceFeed, BybitFeed, OkxFeed, VariationalFeed
+from bot.leadlag import LeadLag
+from bot.market import ArcusBook, Market
+from bot.strategy import Strategy
+
+LEADERS = ["variational", "binance", "bybit", "okx"]
+
+
+@pytest.fixture
+def cfg():
+    return load_config()
+
+
+def mk():
+    return {s: Market(s, LEADERS) for s in ("BTC", "ETH")}
+
+
+# ---------------------------------------------------------------- book
+def test_book_sequence_and_gap():
+    b = ArcusBook()
+    b.snapshot([["100", "1"], ["99", "2"]], [["101", "1"]], seq=10, ts=0)
+    assert b.valid and b.best_bid == 100 and b.best_ask == 101
+    assert b.update([["100", "0"]], [], seq=11, ts=0)          # delete best bid
+    assert b.best_bid == 99
+    assert b.update([["100", "5"]], [], seq=11, ts=0)          # duplicate ignored
+    assert b.best_bid == 99
+    assert not b.update([], [], seq=13, ts=0)                  # gap
+    assert b.health == "RESYNC" and not b.valid
+
+
+def test_book_walk_respects_limit_and_depth():
+    b = ArcusBook()
+    b.snapshot([["99", "1"]], [["100", "1"], ["101", "1"], ["105", "10"]], seq=1, ts=0)
+    qty, px = b.walk("buy", 250, limit=101)
+    assert qty == pytest.approx(2) and px == pytest.approx(100.5)   # only 201 USD available
+    qty, px = b.walk_qty("sell", 0.5, limit=98)
+    assert qty == 0.5 and px == 99
+    assert b.vwap_for("buy", 10_000) == 0.0                          # book too thin
+
+
+# ---------------------------------------------------------------- feed parsing
+def test_arcus_feed_parses_snapshot_and_delta():
+    m = mk()
+    f = ArcusFeed(m, "BTC")
+    f.on_message({"type": "subscribed", "channel": "l2OrderbookUpdates", "id": "BTC-USD",
+                  "contents": {"bids": [["100", "1"]], "asks": [["101", "2"]], "lastSequenceId": 5}})
+    f.on_message({"type": "channel_data", "channel": "l2OrderbookUpdates", "id": "BTC-USD",
+                  "contents": {"bids": [["100.5", "1"]], "asks": [], "lastSequenceId": 6, "globalSequenceId": 99}})
+    f.on_message({"type": "channel_data", "channel": "l2OrderbookUpdates", "id": "ETH-USD",
+                  "contents": {"bids": [["1", "1"]], "asks": [], "lastSequenceId": 7, "globalSequenceId": 100}})
+    assert m["BTC"].arcus.best_bid == 100.5 and m["BTC"].arcus.seq == 6
+
+
+def test_leader_feeds_parse():
+    m = mk()
+    VariationalFeed(m).on_message({"channel": "instrument_price:P-BTC-USDC-3600",
+                                   "pricing": {"price": "86162.06", "underlying_price": "86201.63"}})
+    BinanceFeed(m).on_message({"stream": "ethusdt@bookTicker", "data": {"s": "ETHUSDT", "b": "4000.1", "a": "4000.2"}})
+    BybitFeed(m).on_message({"topic": "orderbook.1.BTCUSDT", "type": "snapshot",
+                             "data": {"s": "BTCUSDT", "b": [["86000", "1"]], "a": [["86001", "2"]]}})
+    OkxFeed(m).on_message({"arg": {"channel": "bbo-tbt", "instId": "BTC-USDT-SWAP"},
+                           "data": [{"bids": [["86002", "1", "0", "1"]], "asks": [["86003", "1", "0", "1"]], "ts": "1"}]})
+    assert m["BTC"].leaders["variational"].mid == pytest.approx(86162.06)
+    assert m["ETH"].leaders["binance"].bid == 4000.1
+    assert m["BTC"].leaders["bybit"].ask == 86001
+    assert m["BTC"].leaders["okx"].bid == 86002
+
+
+# ---------------------------------------------------------------- strategy (deterministic clock)
+def _run_sim(cfg, seconds, lag_ms, seed=7, tmp_path=None):
+    markets = mk()
+    sim = SimFeed(markets, arcus_lag_ms=lag_ms, seed=seed)
+    ll = LeadLag(markets, cfg)
+    strat = Strategy(markets, cfg, data_dir=tmp_path, leadlag=ll)
+    t = 1000.0
+    for _ in range(int(seconds / 0.05)):
+        sim.step(t)
+        for k in range(5):                       # strategy at 100 Hz between 20 Hz market steps
+            strat.tick(t + k * 0.01)
+            ll.tick(t + k * 0.01)
+        t += 0.05
+    return strat, ll
+
+
+def test_profitable_when_arcus_lags_more_than_our_latency(cfg, tmp_path):
+    strat, ll = _run_sim(cfg, 600, lag_ms=1200, tmp_path=tmp_path)
+    st = strat.stats
+    assert st.wins + st.losses >= 10
+    assert st.realized > 0
+    assert all(t.notional <= cfg.paper.order_notional_usd + 1e-6 for t in strat.trades)
+    assert (tmp_path / "trades.csv").exists()
+    lags = {(r["symbol"], r["leader"]): r for r in ll.summary()}
+    assert 700 <= lags[("BTC", "binance")]["xcorr_lag_ms"] <= 1600
+
+
+def test_no_edge_without_lag(cfg, tmp_path):
+    """If Arcus is as fast as the leaders, the gate must keep us (mostly) out."""
+    strat, _ = _run_sim(cfg, 600, lag_ms=0, tmp_path=tmp_path)
+    assert strat.stats.wins + strat.stats.losses == 0
+
+
+def test_cap_never_exceeded(cfg, tmp_path):
+    cfg["paper"]["order_notional_usd"] = 400
+    strat, _ = _run_sim(cfg, 300, lag_ms=1200, tmp_path=tmp_path)
+    # with two symbols and 400/entry, the second entry must be clipped to 100
+    assert strat.stats.wins + strat.stats.losses > 0
+    assert strat.open_notional() <= cfg["paper"]["max_notional_usd"] + 1e-6
+    assert max(t.notional for t in strat.trades) <= 400 + 1e-6
+
+
+def test_daily_loss_limit_blocks_entries(cfg, tmp_path):
+    strat, _ = _run_sim(cfg, 5, lag_ms=1200, tmp_path=tmp_path)
+    strat.stats.day_pnl = -1000
+    assert strat._risk_block(0) == "daily loss limit"
+    assert math.isfinite(strat.stats.equity)
