@@ -143,3 +143,20 @@ def test_default_trades_without_qualification_and_reports_gaps(cfg, tmp_path):
     strat, _ = _run_sim(cfg, 120, lag_ms=1200, tmp_path=tmp_path)
     assert strat.stats.wins + strat.stats.losses > 0
     assert strat.diag["BTC"]["best_edge"] > strat.diag["BTC"]["need"]
+
+
+def test_maker_exit_books_small_gaps_without_exit_fee(cfg, tmp_path):
+    assert cfg.paper.exit_mode == "maker"
+    strat, _ = _run_sim(cfg, 300, lag_ms=1200, tmp_path=tmp_path)
+    makers = [t for t in strat.trades if t.exit_reason == "maker_tp"]
+    assert makers
+    for t in makers:
+        # only the entry taker fee is paid
+        assert t.fees_usd == pytest.approx(t.notional * cfg.paper.taker_fee_bps / 1e4, rel=0.02)
+        assert t.net_usd > 0
+
+
+def test_taker_mode_still_works(cfg, tmp_path):
+    cfg["paper"]["exit_mode"] = "taker"
+    strat, _ = _run_sim(cfg, 120, lag_ms=1200, tmp_path=tmp_path)
+    assert strat.trades and all(t.exit_reason != "maker_tp" for t in strat.trades)

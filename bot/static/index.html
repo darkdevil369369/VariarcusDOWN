@@ -128,12 +128,12 @@ function market(sym,m,cfg){ensureMarket(sym);const a=m.arcus;
   rows.push(`<tr><td style="color:${COLORS[n]||'#ccc'}">${n}</td><td>${f(v.mid)}</td><td>${v.age_ms==null?'–':f(v.age_ms,0)}</td><td>${sgn(v.basis_bps,2)}</td><td class="${cls(v.momentum_bps)}">${sgn(v.momentum_bps,2)}</td><td class="${cls(g)}">${sgn(g,2)}</td><td>${v.fresh?'<span class="badge on">fresh</span>':'<span class="badge">stale</span>'}</td></tr>`);
   const h=hist[sym];(h.series[n]=h.series[n]||[]);}
  $('ld-'+sym).innerHTML=rows.join('');
- const p=m.position;$('pos-'+sym).innerHTML=p?`<div class="posbox ${p.side.toLowerCase()} mono">${p.side} ${f(p.qty,5)} @ ${f(p.entry_px)} · $${f(p.notional,0)} · held ${f(p.held_ms/1000,1)}s · PnL <span class="${cls(p.pnl_bps)}">${sgn(p.pnl_bps,2)} bps</span>${p.exit_pending?' · exiting…':''}</div>`:'';
+ const p=m.position;$('pos-'+sym).innerHTML=p?`<div class="posbox ${p.side.toLowerCase()} mono">${p.side} ${f(p.qty,5)} @ ${f(p.entry_px)} · $${f(p.notional,0)} · held ${f(p.held_ms/1000,1)}s · PnL <span class="${cls(p.pnl_bps)}">${sgn(p.pnl_bps,2)} bps</span>${p.tp_px?' · maker exit @ '+f(p.tp_px):''}${p.exit_pending?' · exiting…':''}</div>`:'';
  const bk=a.top||{bids:[],asks:[]};
  $('bk-'+sym).innerHTML='<div style="display:block">'+bk.bids.map(([px,sz])=>`<div class="bid"><span>${f(sz,4)}</span><span class="pos">${f(px)}</span></div>`).join('')+'</div><div style="display:block">'+bk.asks.map(([px,sz])=>`<div class="ask"><span class="neg">${f(px)}</span><span>${f(sz,4)}</span></div>`).join('')+'</div>';
  // chart history
  const h=hist[sym];h.t.push(new Date().toLocaleTimeString());
- const need=2*cfg.fee_bps+(a.spread_bps||0)/2+cfg.min_net_edge;
+ const need=cfg.exit_mode==='maker'?cfg.fee_bps+cfg.min_net_edge+cfg.maker_buffer:2*cfg.fee_bps+(a.spread_bps||0)/2+cfg.min_net_edge;
  for(const [n,v] of Object.entries(m.leaders)){(h.series[n]=h.series[n]||[]);h.series[n].push(v.fresh&&v.fair&&mid?(v.fair/mid-1)*1e4:null)}
  (h.series['+need']=h.series['+need']||[]).push(need);(h.series['-need']=h.series['-need']||[]).push(-need);
  const MAX=720;if(h.t.length>MAX){h.t.shift();for(const k in h.series)h.series[k].shift()}

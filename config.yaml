@@ -12,6 +12,8 @@ paper:
   rtt_ms: 180                 # your round trip to api.arcus.xyz — measure it, it decides everything
   taker_speed_bump_ms: 50     # Arcus holds taker orders 50 ms before matching
   taker_fee_bps: 2.25         # Arcus base tier taker fee
+  maker_fee_bps: 0.0          # Arcus base tier maker fee
+  exit_mode: maker            # maker = resting ALO take-profit (no exit fee); taker = IOC exit
   entry_max_slippage_bps: 3   # IOC limit = touch +/- this at decision time
   exit_max_slippage_bps: 15   # exits must get done
 
@@ -29,7 +31,9 @@ strategy:
   basis_warmup_s: 20          # no trading until basis has this much data
   momentum_window_ms: 1500    # leader must have moved within this window ...
   min_leader_move_bps: 3      # ... by at least this much, in the trade direction
-  min_net_edge_bps: 1.0       # edge left after fees + half spread
+  min_net_edge_bps: 1.0       # profit kept per trade after fees (maker mode: the take-profit distance minus entry fee)
+  maker_exit_buffer_bps: 0.5  # maker mode: extra gap required beyond the take-profit distance
+  maker_tp_capture: 0.8       # maker mode: take-profit at this share of the entry gap (floor: fee + min profit)
   min_leaders_agree: 1        # leaders that must show the edge
   veto_on_disagreement: true  # skip if any fresh leader signals the opposite side
   max_spread_bps: 6           # skip when Arcus spread is wider

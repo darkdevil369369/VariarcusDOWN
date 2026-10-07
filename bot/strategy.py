@@ -44,6 +44,8 @@ class Position:
     entry_edge_bps: float
     leaders: str
     exit_pending: bool = False
+    tp_px: float = 0.0            # resting maker (ALO) exit price, 0 = none
+    tp_live_t: float = 0.0        # when that order is resting on the book
 
     @property
     def notional(self) -> float:
@@ -201,7 +203,11 @@ class Strategy:
         bid_exec = book.vwap_for("sell", size)
         if not ask_exec or not bid_exec:
             return
-        need = 2 * p.taker_fee_bps + spread / 2 + s.min_net_edge_bps
+        if p.exit_mode == "maker":
+            # taker in, resting ALO out at entry +/- (fee + min profit): no exit fee, no spread crossed
+            need = p.taker_fee_bps + s.min_net_edge_bps + s.maker_exit_buffer_bps
+        else:
+            need = 2 * p.taker_fee_bps + spread / 2 + s.min_net_edge_bps
         longs, shorts = [], []
         for name, v in view.items():
             if not v.get("fresh") or v["age_ms"] > self.cfg.leaders[name]["trigger_age_ms"]:
@@ -249,20 +255,43 @@ class Strategy:
         book = market.arcus
         mark = book.best_bid if pos.side > 0 else book.best_ask
         pnl_bps = pos.side * (mark / pos.entry_px - 1) * 1e4
+        if pos.tp_px and t >= pos.tp_live_t:
+            # resting ALO: long sells at tp (filled once a bid reaches it), short buys at tp
+            touched = book.best_bid >= pos.tp_px if pos.side > 0 else book.best_ask <= pos.tp_px
+            if touched:
+                self._close(t, pos, pos.qty, pos.tp_px, "maker_tp", self.cfg.paper.maker_fee_bps / 1e4)
+                return
         fair = sig.composite_fair()
         reason = ""
-        if fair is not None:
+        if fair is not None and not pos.tp_px:
             remaining = pos.side * (fair / mark - 1) * 1e4
             if remaining <= s.exit_edge_bps:
                 reason = "converged"
-        if pnl_bps >= s.take_profit_bps:
+        if pnl_bps >= s.take_profit_bps and not pos.tp_px:
             reason = "take_profit"
         elif pnl_bps <= -s.stop_loss_bps:
             reason = "stop_loss"
         elif (t - pos.entry_t) * 1000 >= s.max_hold_ms:
             reason = reason or "max_hold"
         if reason:
+            pos.tp_px = 0.0           # cancel the resting maker exit, then exit as taker
             self._send_exit(t, pos, reason, book)
+
+    def _place_maker_tp(self, t: float, pos: Position, book) -> None:
+        p, s = self.cfg.paper, self.cfg.strategy
+        if p.exit_mode != "maker":
+            return
+        # aim for most of the gap the leader showed, never less than fee + min profit
+        dist = max(p.taker_fee_bps + s.min_net_edge_bps, s.maker_tp_capture * pos.entry_edge_bps) / 1e4
+        tp = pos.entry_px * (1 + dist) if pos.side > 0 else pos.entry_px * (1 - dist)
+        crosses = tp <= book.best_bid if pos.side > 0 else tp >= book.best_ask
+        if crosses:
+            # ALO would be rejected (already through the book): take it as a taker instead
+            self._send_exit(t, pos, "tp_cross", book)
+            return
+        pos.tp_px = tp
+        pos.tp_live_t = t + p.rtt_ms / 2000   # ALO skips the speed bump; half RTT to arrive
+        self._event(pos.symbol, f"MAKER EXIT resting @ {tp:.2f}")
 
     def _send_exit(self, t: float, pos: Position, reason: str, book) -> None:
         p = self.cfg.paper
@@ -300,6 +329,7 @@ class Strategy:
                     entry_t=t, entry_wall=time.time(), entry_fee=fee, entry_edge_bps=o.edge_bps,
                     leaders=o.leaders,
                 )
+                self._place_maker_tp(t, self.positions[o.symbol], book)
                 slip = (px / o.decided_px - 1) * 1e4 * (1 if o.side == "buy" else -1)
                 self._event(o.symbol, f"FILLED {o.side.upper()} {qty:.5f} @ {px:.2f} (${qty*px:.0f}, slip {slip:+.1f}bps)")
             else:
@@ -386,4 +416,5 @@ class Strategy:
         t = now()
         for pos in list(self.positions.values()):
             if not pos.exit_pending:
+                pos.tp_px = 0.0
                 self._send_exit(t, pos, "manual_flatten", self.markets[pos.symbol].arcus)

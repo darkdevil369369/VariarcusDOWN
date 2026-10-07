@@ -86,6 +86,7 @@ class Dashboard:
                     "held_ms": round((time.monotonic() - pos.entry_t) * 1000),
                     "pnl_bps": round(pos.side * (mark / pos.entry_px - 1) * 1e4, 2) if mark else None,
                     "exit_pending": pos.exit_pending,
+                    "tp_px": pos.tp_px or None,
                 },
             }
         closed = stats.wins + stats.losses
@@ -120,6 +121,8 @@ class Dashboard:
                 "order_notional": self.cfg.paper.order_notional_usd,
                 "fee_bps": self.cfg.paper.taker_fee_bps,
                 "min_net_edge": self.cfg.strategy.min_net_edge_bps,
+                "exit_mode": self.cfg.paper.exit_mode,
+                "maker_buffer": self.cfg.strategy.maker_exit_buffer_bps,
                 "direction": self.cfg.strategy.direction,
                 "tp": self.cfg.strategy.take_profit_bps,
                 "sl": self.cfg.strategy.stop_loss_bps,
