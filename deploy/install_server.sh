@@ -3,7 +3,7 @@
 #   * systemd service `variarcus` (User=ubuntu, Restart=always, loads ~/.mirofish.env for Telegram)
 #   * dashboard on 127.0.0.1:8798, published as https://variarcus.tryrealo.com
 #     through the existing cloudflared tunnel (no AWS port to open)
-#   * login = the same user:pass as edge.tryrealo.com (CROSSEDGE_DASH_AUTH in ~/.crossedge_dash.env)
+#   * no dashboard login (paper only); set dashboard.auth: true to reuse CROSSEDGE_DASH_AUTH
 #
 #   bash ~/VariarcusDOWN/deploy/install_server.sh
 # Re-running it updates the code and restarts the service.
@@ -27,16 +27,11 @@ fi
 .venv/bin/pip install -q --upgrade pip
 .venv/bin/pip install -q -r requirements.txt
 
-echo "== dashboard login"
+# Dashboard has no login (Amit's choice: paper bot, no keys on it).
+# To add one later: set dashboard.auth: true in config.local.yaml.
 touch "$ENV_FILE"; chmod 600 "$ENV_FILE"
-if grep -q '^CROSSEDGE_DASH_AUTH=' "$HOME/.crossedge_dash.env" 2>/dev/null; then
-  LOGIN="same user/password as edge.tryrealo.com"
-else
-  grep -q '^VARIARCUS_TOKEN=' "$ENV_FILE" || \
-    echo "VARIARCUS_TOKEN=$(python3 -c 'import secrets;print(secrets.token_urlsafe(18))')" >> "$ENV_FILE"
-  LOGIN="token link below"
-fi
-TOKEN="$(grep '^VARIARCUS_TOKEN=' "$ENV_FILE" | cut -d= -f2- || true)"
+LOGIN="no login"
+TOKEN=""
 
 if [ ! -f config.local.yaml ]; then
   cat > config.local.yaml <<YAML
@@ -44,6 +39,7 @@ dashboard:
   host: 127.0.0.1
   port: $PORT
   open_browser: false
+  auth: false
 YAML
 fi
 

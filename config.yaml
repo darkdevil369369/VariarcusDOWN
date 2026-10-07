@@ -65,5 +65,6 @@ telegram:                     # uses SHADOW_TG_TOKEN / MIROFISH_TG_CHAT (env or 
 dashboard:
   host: 127.0.0.1             # 0.0.0.0 on a server (then a token is mandatory)
   token: ""                   # or env VARIARCUS_TOKEN; open with http://IP:8787/?token=...
+  auth: true                  # false = no login at all (paper bot, no keys on it)
   port: 8787
   open_browser: true

@@ -29,8 +29,10 @@ class Dashboard:
         self.token = os.environ.get("VARIARCUS_TOKEN") or cfg.dashboard.get("token") or ""
         # Basic auth "user:pass", same login as the other dashboards on the server
         # (CROSSEDGE_DASH_AUTH in ~/.crossedge_dash.env).
-        self.basic = os.environ.get("CROSSEDGE_DASH_AUTH") or _read_env_key(
-            Path.home() / ".crossedge_dash.env", "CROSSEDGE_DASH_AUTH")
+        self.basic = ""
+        if cfg.dashboard.get("auth", True):
+            self.basic = os.environ.get("CROSSEDGE_DASH_AUTH") or _read_env_key(
+                Path.home() / ".crossedge_dash.env", "CROSSEDGE_DASH_AUTH")
         self.basic_header = "Basic " + base64.b64encode(self.basic.encode()).decode() if self.basic else ""
         self.session = hashlib.sha256(f"variarcus:{self.basic}:{self.token}".encode()).hexdigest()
 

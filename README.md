@@ -36,8 +36,8 @@ bash ~/VariarcusDOWN/deploy/install_server.sh
 
 The script installs the `variarcus` systemd service and serves the dashboard on
 127.0.0.1:8798. It publishes the dashboard at **https://variarcus.tryrealo.com** through the
-existing cloudflared tunnel, so no AWS port needs to be opened. Login is the same as
-edge.tryrealo.com (`CROSSEDGE_DASH_AUTH`). Telegram alerts use `~/.mirofish.env`. It also
+existing cloudflared tunnel, so no AWS port needs to be opened. There is no login (paper
+only). Set `dashboard.auth: true` to reuse the edge.tryrealo.com login. Telegram alerts use `~/.mirofish.env`. It also
 measures RTT to Arcus and writes it into the config. Note: Arcus's servers are in Tokyo, so
 from Ireland the RTT is about 320 ms. Run the script again to update. Logs:
 `journalctl -u variarcus -f`. Pause with `touch ~/.variarcus_STOP`.
