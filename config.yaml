@@ -28,8 +28,8 @@ strategy:
   basis_tau_s: 90             # EMA horizon for Arcus-vs-leader basis
   basis_warmup_s: 20          # no trading until basis has this much data
   momentum_window_ms: 1500    # leader must have moved within this window ...
-  min_leader_move_bps: 4      # ... by at least this much, in the trade direction
-  min_net_edge_bps: 2.0       # edge left after fees + half spread
+  min_leader_move_bps: 3      # ... by at least this much, in the trade direction
+  min_net_edge_bps: 1.0       # edge left after fees + half spread
   min_leaders_agree: 1        # leaders that must show the edge
   veto_on_disagreement: true  # skip if any fresh leader signals the opposite side
   max_spread_bps: 6           # skip when Arcus spread is wider
@@ -52,7 +52,7 @@ leadlag:
   # A leader may trigger trades only after the live data proves Arcus follows it
   # later than we can act (event median lag >= rtt + speed bump + margin
   # AND return cross-correlation peaks at a lag >= rtt + speed bump).
-  qualify: true
+  qualify: false              # paper: trade on every signal; analyzer still measures and shows lag
   qualify_min_events: 10
   qualify_min_follow_pct: 60
   qualify_margin_ms: 150

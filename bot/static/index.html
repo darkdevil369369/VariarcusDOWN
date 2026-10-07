@@ -105,7 +105,8 @@ function ensureMarket(sym){if($('m-'+sym))return;
  <div class="row"><div><div class="note">Arcus bid / ask</div><div class="mono big" id="ba-${sym}"></div></div>
  <div><div class="note">Spread</div><div class="mono big" id="sp-${sym}"></div></div>
  <div><div class="note">Fair − Arcus mid</div><div class="mono gap" id="gap-${sym}"></div></div>
- <div><div class="note">Cooldown</div><div class="mono big" id="cd-${sym}"></div></div></div>
+ <div><div class="note">Cooldown</div><div class="mono big" id="cd-${sym}"></div></div>
+ <div><div class="note">Best gap this hour / needed</div><div class="mono big" id="bg-${sym}"></div></div></div>
  <table class="mono" style="margin-top:8px"><thead><tr><th>Leader</th><th>Mid</th><th>Age ms</th><th>Basis bps</th><th>Move bps</th><th>Fair−Arcus bps</th><th></th></tr></thead><tbody id="ld-${sym}"></tbody></table>
  <div id="pos-${sym}"></div>
  <div class="chartbox"><canvas id="c-${sym}"></canvas></div>
@@ -121,6 +122,7 @@ function market(sym,m,cfg){ensureMarket(sym);const a=m.arcus;
  $('sp-'+sym).textContent=a.spread_bps==null?'–':f(a.spread_bps,2)+' bps';
  $('gap-'+sym).textContent=m.gap_bps==null?'–':sgn(m.gap_bps,2)+' bps';$('gap-'+sym).className='mono gap '+cls(m.gap_bps);
  $('cd-'+sym).textContent=m.cooldown_s>0?m.cooldown_s+'s':'ready';
+ const bg=m.best_gap;$('bg-'+sym).innerHTML=bg?`<span class="${bg.best_edge>=bg.need?'pos':'neg'}">${f(bg.best_edge,1)}</span> / ${f(bg.need,1)} bps <span class="note">${bg.leader}</span>`:'–';
  const rows=[];const mid=a.mid;
  for(const [n,v] of Object.entries(m.leaders)){const g=v.fair&&mid?(v.fair/mid-1)*1e4:null;
   rows.push(`<tr><td style="color:${COLORS[n]||'#ccc'}">${n}</td><td>${f(v.mid)}</td><td>${v.age_ms==null?'–':f(v.age_ms,0)}</td><td>${sgn(v.basis_bps,2)}</td><td class="${cls(v.momentum_bps)}">${sgn(v.momentum_bps,2)}</td><td class="${cls(g)}">${sgn(g,2)}</td><td>${v.fresh?'<span class="badge on">fresh</span>':'<span class="badge">stale</span>'}</td></tr>`);

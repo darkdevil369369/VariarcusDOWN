@@ -78,6 +78,7 @@ class Dashboard:
                 "leaders": {n: _clean(v) for n, v in sig.view.items()},
                 "fair": fair,
                 "gap_bps": round((fair / book.mid - 1) * 1e4, 2) if fair and book.valid else None,
+                "best_gap": st.diag.get(sym),
                 "cooldown_s": max(0.0, round(st.cooldown_until[sym] - time.monotonic(), 1)),
                 "position": None if pos is None else {
                     "side": "LONG" if pos.side > 0 else "SHORT", "qty": pos.qty,

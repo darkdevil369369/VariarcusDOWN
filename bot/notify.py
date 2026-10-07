@@ -73,10 +73,17 @@ class Notifier:
         n = st.wins + st.losses
         wr = f"{100 * st.wins / n:.0f}%" if n else "–"
         q = [f"{s}:{l}" for (s, l), (ok, _) in self.app.leadlag.qualified.items() if ok]
+        gaps = []
+        for sym in self.cfg.symbols:
+            d = self.app.strategy.diag_prev.get(sym) or self.app.strategy.diag.get(sym)
+            if d:
+                gaps.append(f"{sym} best gap {d['best_edge']:.1f} / need {d['need']:.1f} bps "
+                            f"({d['leader']}, {d['over_need']} ticks over)")
         return (f"Equity <b>${st.equity:.2f}</b> (start ${self.cfg.paper.capital_usd:.0f})\n"
                 f"Realized ${st.realized:+.3f} · today ${st.day_pnl:+.3f} · fees ${st.fees:.3f}\n"
                 f"Trades {n} · win {wr} · signals {st.signals} · missed {st.missed_fills}\n"
-                f"Qualified leaders: {', '.join(q) if q else 'none yet'}")
+                f"Qualified leaders: {', '.join(q) if q else 'none yet'}\n"
+                + "\n".join(gaps))
 
     async def run(self, stop: asyncio.Event) -> None:
         if not self.enabled:

@@ -124,8 +124,24 @@ class Strategy:
         self.data_dir = data_dir or ROOT / "data"
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.trades_csv = self.data_dir / "trades.csv"
+        self.diag: dict[str, dict] = {}
+        self.diag_prev: dict[str, dict] = {}
 
     # ------------------------------------------------------------------ helpers
+    def _diag(self, sym: str, leader: str, edge: float, need: float, mom: float) -> None:
+        """Largest tradeable gap seen per symbol in the current hour, to explain no-trade hours."""
+        hour = int(time.time() // 3600)
+        d = self.diag.get(sym)
+        if d is None or d["hour"] != hour:
+            if d is not None:
+                self.diag_prev[sym] = d
+            d = self.diag[sym] = {"hour": hour, "best_edge": -99.0, "need": need, "leader": "",
+                                  "momentum": 0.0, "over_need": 0}
+        if edge > d["best_edge"]:
+            d.update(best_edge=round(edge, 2), need=round(need, 2), leader=leader, momentum=round(mom, 2))
+        if edge >= need:
+            d["over_need"] += 1
+
     def _event(self, symbol: str, text: str) -> None:
         self.events.append({"t": time.time(), "symbol": symbol, "text": text})
         del self.events[:-200]
@@ -190,10 +206,11 @@ class Strategy:
         for name, v in view.items():
             if not v.get("fresh") or v["age_ms"] > self.cfg.leaders[name]["trigger_age_ms"]:
                 continue
-            if self.leadlag is not None and not self.leadlag.is_qualified(sym, name):
-                continue
             long_edge = (v["fair"] / ask_exec - 1) * 1e4
             short_edge = (bid_exec / v["fair"] - 1) * 1e4
+            self._diag(sym, name, max(long_edge, short_edge), need, v["momentum_bps"])
+            if self.leadlag is not None and not self.leadlag.is_qualified(sym, name):
+                continue
             if long_edge >= need and v["momentum_bps"] >= s.min_leader_move_bps:
                 longs.append((name, long_edge))
             if short_edge >= need and v["momentum_bps"] <= -s.min_leader_move_bps:

@@ -89,6 +89,7 @@ def _run_sim(cfg, seconds, lag_ms, seed=7, tmp_path=None):
 
 
 def test_profitable_when_arcus_lags_more_than_our_latency(cfg, tmp_path):
+    cfg["leadlag"]["qualify"] = True
     strat, ll = _run_sim(cfg, 600, lag_ms=1200, tmp_path=tmp_path)
     st = strat.stats
     assert st.wins + st.losses >= 10
@@ -100,7 +101,8 @@ def test_profitable_when_arcus_lags_more_than_our_latency(cfg, tmp_path):
 
 
 def test_no_edge_without_lag(cfg, tmp_path):
-    """If Arcus is as fast as the leaders, the gate must keep us (mostly) out."""
+    """With qualification on, a leader Arcus does not lag must never trigger."""
+    cfg["leadlag"]["qualify"] = True
     strat, _ = _run_sim(cfg, 600, lag_ms=0, tmp_path=tmp_path)
     assert strat.stats.wins + strat.stats.losses == 0
 
@@ -135,3 +137,9 @@ def test_arcus_resync_sent_once_per_gap(monkeypatch):
     assert len(calls) == 1
     f.on_message(snap)
     assert f.resync_at is None and m["BTC"].arcus.health == "OK"
+
+
+def test_default_trades_without_qualification_and_reports_gaps(cfg, tmp_path):
+    strat, _ = _run_sim(cfg, 120, lag_ms=1200, tmp_path=tmp_path)
+    assert strat.stats.wins + strat.stats.losses > 0
+    assert strat.diag["BTC"]["best_edge"] > strat.diag["BTC"]["need"]
