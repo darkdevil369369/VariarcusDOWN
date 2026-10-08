@@ -93,7 +93,8 @@ class Dashboard:
         closed = stats.wins + stats.losses
         return {
             "t": time.time(),
-            "mode": "SIM" if self.s.sim else "PAPER (live data)",
+            "mode": ("SIM" if self.s.sim else "PAPER (live data)") + f" · {self.cfg.strategy.get('mode', 'taker')}"
+                    + f" · v{getattr(self.s, 'version', '?')}",
             "uptime_s": round(time.time() - self.s.started),
             "paused": st.paused,
             "halted": stats.halted_reason,

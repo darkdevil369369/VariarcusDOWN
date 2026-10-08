@@ -80,7 +80,7 @@ class Notifier:
                 gaps.append(f"{sym} best gap {d['best_edge']:.1f} / need {d['need']:.1f} bps "
                             f"({d['leader']}, {d['over_need']} ticks over)")
         return (f"Equity <b>${st.equity:.2f}</b> (start ${self.cfg.paper.capital_usd:.0f})\n"
-                f"Realized ${st.realized:+.3f} · today ${st.day_pnl:+.3f} · fees ${st.fees:.3f}\n"
+                f"Gross ${st.realized + st.fees:+.3f} − fees ${st.fees:.3f} = net ${st.realized:+.3f} · today ${st.day_pnl:+.3f}\n"
                 f"Trades {n} · win {wr} · signals {st.signals} · missed {st.missed_fills}\n"
                 f"Qualified leaders: {', '.join(q) if q else 'none yet'}\n"
                 + "\n".join(gaps))

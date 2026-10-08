@@ -13,7 +13,7 @@ paper:
   taker_speed_bump_ms: 50     # Arcus holds taker orders 50 ms before matching
   taker_fee_bps: 2.25         # Arcus base tier taker fee
   maker_fee_bps: 0.0          # Arcus base tier maker fee
-  exit_mode: maker            # maker = resting ALO take-profit (no exit fee); taker = IOC exit
+  exit_mode: taker            # maker = resting ALO take-profit (no exit fee); taker = IOC exit
   entry_max_slippage_bps: 3   # IOC limit = touch +/- this at decision time
   exit_max_slippage_bps: 15   # exits must get done
 
@@ -26,14 +26,16 @@ leaders:
   okx:         {enabled: true, max_age_ms: 1500, trigger_age_ms: 500}   # swap bbo-tbt
 
 strategy:
-  mode: maker_mm              # maker_mm = maker in + maker out (0 fee both legs, see maker_mm below)
-                              # taker    = taker in on a leader jump, exit per paper.exit_mode
+  mode: taker                 # taker    = taker in on a leader jump, exit per paper.exit_mode
+                              # maker_mm = maker in + maker out (0 fee both legs, see maker_mm below)
   direction: both             # both | long | short   (short = only trade drops)
   basis_tau_s: 90             # EMA horizon for Arcus-vs-leader basis
   basis_warmup_s: 20          # no trading until basis has this much data
   momentum_window_ms: 1500    # leader must have moved within this window ...
-  min_leader_move_bps: 3      # ... by at least this much, in the trade direction
-  min_net_edge_bps: 1.0       # profit kept per trade after fees (maker mode: the take-profit distance minus entry fee)
+  min_leader_move_bps: 1.5    # ... by at least this much, in the trade direction
+  min_net_edge_bps: -3.5      # gap left after fees + half spread. -3.5 = trade every gap >= ~1 bps
+                              # even though fees (4.5 bps round trip) make small ones lose: paper evidence mode.
+                              # Set 1.0 to only take gaps that pay after fees.
   maker_exit_buffer_bps: 0.5  # maker mode: extra gap required beyond the take-profit distance
   maker_tp_capture: 0.8       # maker mode: take-profit at this share of the entry gap (floor: fee + min profit)
   min_leaders_agree: 1        # leaders that must show the edge

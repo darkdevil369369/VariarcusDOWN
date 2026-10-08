@@ -230,10 +230,10 @@ class Strategy:
                 side, hits = "sell", shorts
         if side is None:
             return
-        self.stats.signals += 1
         block = self._risk_block(t)
         if block:
             return
+        self.stats.signals += 1
         room = p.max_notional_usd - self.open_notional()
         notional = min(size, room)
         if notional < 5:     # Arcus minimum order notional

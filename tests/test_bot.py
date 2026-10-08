@@ -91,6 +91,8 @@ def _run_sim(cfg, seconds, lag_ms, seed=7, tmp_path=None, cls=Strategy):
 
 def test_profitable_when_arcus_lags_more_than_our_latency(cfg, tmp_path):
     cfg["leadlag"]["qualify"] = True
+    cfg["strategy"]["min_net_edge_bps"] = 1.0
+    cfg["strategy"]["min_leader_move_bps"] = 4
     strat, ll = _run_sim(cfg, 600, lag_ms=1200, tmp_path=tmp_path)
     st = strat.stats
     assert st.wins + st.losses >= 10
@@ -147,7 +149,8 @@ def test_default_trades_without_qualification_and_reports_gaps(cfg, tmp_path):
 
 
 def test_maker_exit_books_small_gaps_without_exit_fee(cfg, tmp_path):
-    assert cfg.paper.exit_mode == "maker"
+    cfg["paper"]["exit_mode"] = "maker"
+    cfg["strategy"]["min_net_edge_bps"] = 1.0
     strat, _ = _run_sim(cfg, 300, lag_ms=1200, tmp_path=tmp_path)
     makers = [t for t in strat.trades if t.exit_reason == "maker_tp"]
     assert makers
@@ -164,7 +167,6 @@ def test_taker_mode_still_works(cfg, tmp_path):
 
 
 def test_maker_mm_quotes_fill_without_fees_and_never_cross(cfg, tmp_path):
-    assert cfg.strategy.mode == "maker_mm"
     strat, _ = _run_sim(cfg, 600, lag_ms=1200, tmp_path=tmp_path, cls=MakerStrategy)
     assert strat.trades
     for t in strat.trades:

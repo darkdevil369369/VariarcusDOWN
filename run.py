@@ -14,6 +14,7 @@ import logging
 import signal
 import time
 import webbrowser
+from pathlib import Path
 
 from bot.config import load_config
 from bot.dashboard import Dashboard
@@ -33,6 +34,12 @@ class App:
         self.cfg = cfg
         self.sim = sim
         self.started = time.time()
+        try:
+            import subprocess
+            self.version = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+                                          cwd=Path(__file__).parent, timeout=5).stdout.strip() or "?"
+        except Exception:
+            self.version = "?"
         leaders = [n for n, c in cfg.leaders.items() if c.get("enabled", True)]
         self.markets = {s: Market(s, leaders) for s in cfg.symbols}
         self.leadlag = LeadLag(self.markets, cfg)
